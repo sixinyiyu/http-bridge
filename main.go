@@ -2,12 +2,9 @@ package  main
 
 import (
 	"github.com/buaazp/fasthttprouter"
-	//"github.com/pquerna/ffjson/ffjson"
 	"github.com/sixinyiyu/http-bridge/logger"
-	//"github.com/sixinyiyu/http-bridge/util"
 	"github.com/valyala/fasthttp"
 	"github.com/sixinyiyu/http-bridge/controller"
-	//"time"
 )
 
 //type Response struct {
@@ -19,7 +16,6 @@ import (
 //var (
 //	port  = flag.Int("port", 8080, "listen port ")
 //)
-
 
 func main()  {
 	//flag.Parse()
