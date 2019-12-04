@@ -1,4 +1,4 @@
-module github.com/ixinyiyu/http-bridge
+module github.com/sixinyiyu/http-bridge
 
 go 1.13
 
