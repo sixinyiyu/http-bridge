@@ -38,6 +38,11 @@ func IndexHttpHandle(ctx *fasthttp.RequestCtx) {
 		fasthttp.ReleaseRequest(req)
 		fasthttp.ReleaseResponse(resp)
 	}()
+        if method != fasthttp.MethodGet {
+		if requestBody := ctx.PostBody(); requestBody != nil {
+			req.SetBody(requestBody)
+		}
+	}
 
 	/**设置请求参数*/
 	req.Header.SetContentType(util.B2S(ctx.Request.Header.Peek("Content-Type")))
