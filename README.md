@@ -19,6 +19,7 @@ http://127.0.0.1:4455/?url=https://www.mxnzp.com/api/image/girl/list?page=1&head
 
 * 支持方法 ```GET``` ```POST```    ```DELETE``` ```PUT``` 
 * ```url``` 即为需要代理的请求地址
+* headers 自定义header 这里只是为了好看，实际要对header进行encode
 
 
 #### 自定义headers
@@ -34,7 +35,7 @@ customHeaderKey2: customHeaderVal2
 
 ```headers={"token":"1284034","deviceId":"104drldu34","appId":"1453"}```
 
-请求参数名为```headers`` 其中kv 必须为字符串
+请求参数名为```headers`` 其中kv 必须为字符串  实际要对header进行encode
 
 ![Xshot-0023.png](https://i.loli.net/2019/10/22/oMy2H3jg8FKB4bi.png)
 
