@@ -5,6 +5,7 @@ import (
 	"github.com/sixinyiyu/http-bridge/logger"
 	"github.com/sixinyiyu/http-bridge/util"
 	"github.com/valyala/fasthttp"
+	"strings"
 	"time"
 )
 
@@ -12,9 +13,25 @@ import (
 func IndexHttpHandle(ctx *fasthttp.RequestCtx) {
 	startReqTime := time.Now()
 	queryArgs := ctx.QueryArgs()
-	redirectUrl := string(queryArgs.Peek("url"))
+	var redirectUrl strings.Builder
+	redirectUrl.Write(queryArgs.Peek("url"))
+	firstParam := !strings.Contains(redirectUrl.String(), "?")
+	queryArgs.VisitAll(func(key, value []byte) {
+		_key := utils.B2S(key)
+		if  _key != "headers" && _key != "url" {
+			if firstParam {
+				redirectUrl.Write([]byte("?"))
+				firstParam = false
+			} else {
+				redirectUrl.Write([]byte("&"))
+			}
+			redirectUrl.Write(key)
+			redirectUrl.Write([]byte("="))
+			redirectUrl.Write(value)
+		}
+	})
 	method := util.B2S(ctx.Method())
-	logger.Sugar.Infof("请求地址: %s, 请求方法: %s", redirectUrl, method)
+	logger.Sugar.Infof("请求地址: %s, 请求方法: %s", redirectUrl.String(), method)
 
 	req := fasthttp.AcquireRequest()
 	resp := fasthttp.AcquireResponse()
@@ -47,7 +64,7 @@ func IndexHttpHandle(ctx *fasthttp.RequestCtx) {
 	/**设置请求参数*/
 	req.Header.SetContentType(util.B2S(ctx.Request.Header.Peek("Content-Type")))
 	req.Header.SetMethod(method)
-	req.SetRequestURI(redirectUrl)
+	req.SetRequestURI(redirectUrl.String())
 
 
 	// 发送请求
