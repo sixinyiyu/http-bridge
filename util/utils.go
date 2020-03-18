@@ -24,3 +24,10 @@ func S2B(s string) []byte {
 	}
 	return *(*[]byte)(unsafe.Pointer(&bh))
 }
+
+func IsEmpty(s string) bool {
+	if s == "" {
+		return true
+	}
+	return false
+}

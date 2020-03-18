@@ -1,38 +1,28 @@
 package controller
 
 import (
+	"github.com/gin-gonic/gin"
 	"github.com/pquerna/ffjson/ffjson"
 	"github.com/sixinyiyu/http-bridge/logger"
 	"github.com/sixinyiyu/http-bridge/util"
 	"github.com/valyala/fasthttp"
+	"io/ioutil"
 	"time"
 )
 
+var (
+	customerHeaderName = "headers"
+	customerUrlName = "url"
+)
+
 // 自定义请求头 支持放置在请求参数['headers]里或者放在请求头里
-func IndexHttpHandle(ctx *fasthttp.RequestCtx) {
+func IndexHttpHandle(ctx *gin.Context) {
 	startReqTime := time.Now()
-	queryArgs := ctx.QueryArgs()
-	redirectUrl := string(queryArgs.Peek("url"))
-	method := util.B2S(ctx.Method())
-	logger.Sugar.Infof("请求地址: %s, 请求方法: %s", redirectUrl, method)
+	targetUrl := ctx.Query(customerUrlName)
+	logger.Sugar.Infof("请求Content-type: %v", ctx.ContentType())
 
 	req := fasthttp.AcquireRequest()
 	resp := fasthttp.AcquireResponse()
-
-	// 获取透传的请求头 暂时必须都为字符串
-	customerHeaders := util.B2S(queryArgs.Peek("headers"))
-	if customerHeaders != "" {
-		logger.Sugar.Infof("自定义请求头", customerHeaders)
-		var headerMap map[string] string
-		if err := ffjson.Unmarshal(queryArgs.Peek("headers"), &headerMap); err != nil {
-			logger.Sugar.Error(err.Error())
-		}
-	}
-
-	ctx.Request.Header.VisitAll(func(key, value []byte) {
-		logger.Sugar.Infof("key: %s, value: %s", util.B2S(key), util.B2S(value))
-		//req.Header.SetBytesKV(key, value)
-	})
 
 	defer func() {
 		fasthttp.ReleaseRequest(req)
@@ -40,49 +30,70 @@ func IndexHttpHandle(ctx *fasthttp.RequestCtx) {
 	}()
 
 	/**设置请求参数*/
-	req.Header.SetContentType(util.B2S(ctx.Request.Header.Peek("Content-Type")))
-	req.Header.SetMethod(method)
-	req.SetRequestURI(redirectUrl)
+	req.Header.SetContentType(ctx.ContentType())
+	req.Header.SetMethod(ctx.Request.Method)
+	req.SetRequestURI(targetUrl)
 
+	// 表单数据
+	for k, v := range ctx.Request.PostForm {
+		logger.Sugar.Infof("PostForm 请求参数 %s = %s", k, v)
+		for _, _v := range v {
+			req.PostArgs().Add(k, _v)
+		}
+	}
+
+	// 文件上传 暂时不处理
+
+	// query url 解析的请求参数
+	for k, v := range  ctx.Request.URL.Query() {
+		if k == customerUrlName {
+			continue
+		}
+		logger.Sugar.Infof("Query URL 参数: %s = %s", k, v)
+		if k == customerHeaderName {
+			if len(v) > 0 {
+				var headerMap map[string] string
+				if err := ffjson.Unmarshal([]byte(v[0]), &headerMap); err != nil {
+					logger.Sugar.Error(err.Error())
+				}
+				for k, v := range  headerMap {
+					logger.Sugar.Infof("自定义请求头; %v=%v", k, v)
+					req.Header.Set(k, v)
+				}
+			}
+		} else {
+			for _, _v := range  v {
+				req.URI().QueryArgs().Add(k, _v)
+			}
+		}
+	}
+
+	logger.Sugar.Infof("请求地址: %s, 请求方法: %s", req.URI().String(), ctx.Request.Method)
+
+	postBody, err := ioutil.ReadAll(ctx.Request.Body)
+	if err == nil {
+		logger.Sugar.Infof("ctx.Request.body: %v", string(postBody))
+		req.SetBody(postBody)
+	}
+
+	//获取透传的请求头 暂时必须都为字符串
+	for k, v := range  ctx.Request.Header {
+		logger.Sugar.Infof("请求头：%s = %s", k,v)
+		for _, _v := range v {
+			req.Header.Add(k, _v)
+		}
+	}
 
 	// 发送请求
+	logger.Sugar.Infof("远程地址: %s", req.URI().String())
 	if err := fasthttp.Do(req, resp); err != nil {
-		logger.Sugar.Errorf("请求失败 %s" , err.Error())
+		logger.Sugar.Errorf("请求失败 %v" , err.Error())
 	}
-
-	respText := util.B2S(resp.Body())
-
-	logger.Sugar.Infof("响应结果: %s", respText)
-
-	costTime := time.Since(startReqTime)
-	ctx.Response.Header.Set("X-Request-Time", costTime.String())
+	logger.Sugar.Infof("响应结果: %s", util.B2S(resp.Body()))
+	ctx.Header("X-Request-Time", time.Since(startReqTime).String())
 	resp.Header.VisitAll(func(key, value []byte) {
-		ctx.Response.Header.SetBytesKV(key, value)
+		ctx.Header(util.B2S(key), util.B2S(value))
 	})
 
-	_, _ = ctx.WriteString(respText)
+	ctx.Data(200, util.B2S(resp.Header.ContentType()), resp.Body())
 }
-
-// 跨域
-func CrosHttpHandle(ctx *fasthttp.RequestCtx) {
-	logger.Sugar.Infof("请求IP", ctx.RemoteAddr())
-	origin := util.B2S(ctx.Request.Header.Peek("Origin"))
-	if (origin != "") && (origin != "null") {
-		ctx.Response.Header.Set("Access-Control-Allow-Origin", origin)
-	}else {
-		ctx.Response.Header.Set("Access-Control-Allow-Origin", "*")
-	}
-	ctx.Response.Header.Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
-	ctx.Response.Header.Set("Access-Control-Allow-Credentials", "true")
-	ctx.Response.Header.Set("Access-Control-Allow-Headers",
-		"Accept, Origin, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, Token, token")
-	ctx.Response.Header.Set("Content-Type","application/json; charset=utf-8")
-	ctx.SetStatusCode(fasthttp.StatusOK)
-}
-
-// 404
-func NotFoundHttpHandle(ctx * fasthttp.RequestCtx) {
-	ctx.SetContentType("application/json")
-	_, _ = ctx.WriteString("{\"code\": \"500\", \"message\": \"请求路径错误\"}")
-}
-
