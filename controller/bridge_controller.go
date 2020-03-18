@@ -2,11 +2,12 @@ package controller
 
 import (
 	"github.com/gin-gonic/gin"
-	"github.com/pquerna/ffjson/ffjson"
 	"github.com/sixinyiyu/http-bridge/logger"
 	"github.com/sixinyiyu/http-bridge/util"
 	"github.com/valyala/fasthttp"
 	"io/ioutil"
+	"net/http"
+	"net/url"
 	"time"
 )
 
@@ -18,8 +19,15 @@ var (
 // 自定义请求头 支持放置在请求参数['headers]里或者放在请求头里
 func IndexHttpHandle(ctx *gin.Context) {
 	startReqTime := time.Now()
-	targetUrl := ctx.Query(customerUrlName)
-	logger.Sugar.Infof("请求Content-type: %v", ctx.ContentType())
+	headerName := ctx.QueryMap(customerHeaderName)
+	remoteURL, err := url.ParseRequestURI(ctx.Query(customerUrlName))
+	logger.Sugar.Infof("ssssssssssss %s", remoteURL)
+	if nil != err || remoteURL == nil  {
+		ctx.JSON(http.StatusBadRequest, gin.H{
+			"message": "被代理地址不是一个有效的URL",
+		})
+		ctx.Abort()
+	}
 
 	req := fasthttp.AcquireRequest()
 	resp := fasthttp.AcquireResponse()
@@ -29,11 +37,6 @@ func IndexHttpHandle(ctx *gin.Context) {
 		fasthttp.ReleaseResponse(resp)
 	}()
 
-	/**设置请求参数*/
-	req.Header.SetContentType(ctx.ContentType())
-	req.Header.SetMethod(ctx.Request.Method)
-	req.SetRequestURI(targetUrl)
-
 	// 表单数据
 	for k, v := range ctx.Request.PostForm {
 		logger.Sugar.Infof("PostForm 请求参数 %s = %s", k, v)
@@ -42,33 +45,17 @@ func IndexHttpHandle(ctx *gin.Context) {
 		}
 	}
 
-	// 文件上传 暂时不处理
-
+	// 文件上传 暂时不处理<TODO>
 	// query url 解析的请求参数
 	for k, v := range  ctx.Request.URL.Query() {
-		if k == customerUrlName {
+		if k == customerUrlName || k == customerHeaderName {
 			continue
 		}
 		logger.Sugar.Infof("Query URL 参数: %s = %s", k, v)
-		if k == customerHeaderName {
-			if len(v) > 0 {
-				var headerMap map[string] string
-				if err := ffjson.Unmarshal([]byte(v[0]), &headerMap); err != nil {
-					logger.Sugar.Error(err.Error())
-				}
-				for k, v := range  headerMap {
-					logger.Sugar.Infof("自定义请求头; %v=%v", k, v)
-					req.Header.Set(k, v)
-				}
-			}
-		} else {
-			for _, _v := range  v {
-				req.URI().QueryArgs().Add(k, _v)
-			}
+		if nil != remoteURL {
+			remoteURL.Query().Set(k, v[0])
 		}
 	}
-
-	logger.Sugar.Infof("请求地址: %s, 请求方法: %s", req.URI().String(), ctx.Request.Method)
 
 	postBody, err := ioutil.ReadAll(ctx.Request.Body)
 	if err == nil {
@@ -78,14 +65,27 @@ func IndexHttpHandle(ctx *gin.Context) {
 
 	//获取透传的请求头 暂时必须都为字符串
 	for k, v := range  ctx.Request.Header {
-		logger.Sugar.Infof("请求头：%s = %s", k,v)
-		for _, _v := range v {
-			req.Header.Add(k, _v)
+		if k != "Cache-Control" && len(v) > 0 {
+			req.Header.Set(k, v[0])
+		}
+	}
+	if len(headerName) > 0 {
+		for k, v := range headerName {
+			req.Header.Set(k, v)
 		}
 	}
 
+	/**设置请求参数*/
+	req.Header.SetMethod(ctx.Request.Method)
+	req.SetRequestURI(remoteURL.String())
+
+	//req.Header.VisitAll(func(key, value []byte) {
+	//	logger.Sugar.Infof("=======请求头：%s = %s", string(key), string(value))
+	//})
+
+	logger.Sugar.Infof("请求地址: %s, 请求方法: %s", req.URI().String(), ctx.Request.Method)
+
 	// 发送请求
-	logger.Sugar.Infof("远程地址: %s", req.URI().String())
 	if err := fasthttp.Do(req, resp); err != nil {
 		logger.Sugar.Errorf("请求失败 %v" , err.Error())
 	}
@@ -94,6 +94,5 @@ func IndexHttpHandle(ctx *gin.Context) {
 	resp.Header.VisitAll(func(key, value []byte) {
 		ctx.Header(util.B2S(key), util.B2S(value))
 	})
-
 	ctx.Data(200, util.B2S(resp.Header.ContentType()), resp.Body())
 }
